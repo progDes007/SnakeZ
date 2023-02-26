@@ -1,0 +1,2 @@
+[workspace]
+members = ["game_backend", "game_cmd_front", "snakez_cmd_client"]
