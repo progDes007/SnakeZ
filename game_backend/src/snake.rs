@@ -29,7 +29,7 @@ impl Snake
     /// 
     /// #panics
     /// Panics if the length is 0.
-    pub fn new(position: Vector2i, direction: Vector2i, length: usize) -> Snake {
+    pub fn new(position: Vector2i, direction: Vector2i, length: u32) -> Snake {
         assert!(length > 0);
         let mut body = Vec::new();
         for i in 0..length {
