@@ -1,9 +1,9 @@
 use crate::snake::Snake;
-use crate::base::Vector2i;
+use crate::base::{Vector2i, PlayerIndex};
+use crate::grid::{Grid, GridCell, PizzaRec, SnakeRec, SnakeBodyPart};
 use std::boxed::Box;
 
 const INITIAL_LENGTH : u32 = 2;
-type PlayerIndex = i32;
 
 /// The object that communicates snake control input
 pub struct SnakeControl
@@ -49,7 +49,7 @@ impl Game {
     /// Adds new player that has control. Returns new player index that can
     /// be used for referencing this player
     pub fn register_controlled_player(&mut self, control : Box<SnakeControl>) -> PlayerIndex {
-        let new_player_index = self.players.len() as PlayerIndex;
+        let new_player_index = self.players.len();
         // make spawn point
         let spawn_pos = Game::calc_spawn_pos(new_player_index, INITIAL_LENGTH, self.field_size);
         let mut player = Player::new();
@@ -102,6 +102,40 @@ impl Game {
             _ => panic!("Too many snakes"),
         }
         (pos, dir)
+    }
+
+    // Generate the grid that represents the current state of the game
+    pub fn generate_grid(&self) -> Grid {
+        let mut grid = 
+            Grid::from_elem(
+                (self.field_size.x as usize, self.field_size.y as usize),
+                 GridCell::Empty);
+        // Add pizzas
+        for pizza in &self.pizzas {
+            grid[[pizza.x as usize, pizza.y as usize]] = GridCell::Pizza(PizzaRec{});
+        }
+
+        // Add snakes
+        for (player_i, player) in self.players.iter().enumerate()
+        {
+            let player_i = player_i as PlayerIndex;
+            let snake_len = player.snake.body().len();
+            for (part_i, body_part) in player.snake.body().iter().enumerate() {
+
+                let cell = match part_i {
+                    0 => 
+                        GridCell::Snake(SnakeRec{body_part : SnakeBodyPart::Head, player_index : player_i}),
+                    _ if part_i == snake_len - 1 => 
+                        GridCell::Snake(SnakeRec{body_part : SnakeBodyPart::Tail, player_index : player_i}),
+                    _ => 
+                        GridCell::Snake(SnakeRec{body_part : SnakeBodyPart::Body, player_index : player_i}),
+                };
+                grid[[body_part.x as usize, body_part.y as usize]] = cell;
+            }
+        }
+
+        // Return
+        grid
     }
 }
 
@@ -164,6 +198,33 @@ mod tests {
         game.pizzas.push(Vector2i::new(0, 1));
         
         assert_eq!(game.num_empty_cells(), 100 - 2 * INITIAL_LENGTH as i32 - 2);
+    }
+
+    // Test generate gird
+    #[test]
+    fn test_generate_grid() {
+        let mut game = Game::new( Vector2i::new(3, 3));
+        let player1 = game.register_controlled_player(Box::new(SnakeControl{}));
+        // Manually set the snake points to make it easier to test
+        game.players[player1].snake.set_body(vec![
+            Vector2i::new(0, 0),
+            Vector2i::new(0, 1),
+            Vector2i::new(0, 2),
+        ]);
+        // Add one pizza
+        game.pizzas.push(Vector2i::new(2, 2));
+        // Generate grid
+        let grid = game.generate_grid();
+        // Check grid
+        assert_eq!(grid[[0, 0]], GridCell::Snake(SnakeRec{body_part : SnakeBodyPart::Head, player_index : player1}));
+        assert_eq!(grid[[0, 1]], GridCell::Snake(SnakeRec{body_part : SnakeBodyPart::Body, player_index : player1}));
+        assert_eq!(grid[[0, 2]], GridCell::Snake(SnakeRec{body_part : SnakeBodyPart::Tail, player_index : player1}));
+        assert_eq!(grid[[1, 0]], GridCell::Empty);
+        assert_eq!(grid[[1, 1]], GridCell::Empty);
+        assert_eq!(grid[[1, 2]], GridCell::Empty);
+        assert_eq!(grid[[2, 0]], GridCell::Empty);
+        assert_eq!(grid[[2, 1]], GridCell::Empty);
+        assert_eq!(grid[[2, 2]], GridCell::Pizza(PizzaRec{}));
     }
 
 }

@@ -21,6 +21,10 @@ impl Snake
     pub fn body(&self) -> &Vec<Vector2i> {
         &self.body
     }
+    /// Setter for body
+    pub fn set_body(&mut self, body: Vec<Vector2i>) {
+        self.body = body;
+    }
 
     /// Create a new snake.
     /// position: The position of the head of the snake.

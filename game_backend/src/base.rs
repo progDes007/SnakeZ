@@ -1,5 +1,7 @@
 use std::ops::Add;
 
+pub type PlayerIndex = usize;
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Vector2i {
     pub x: i32,

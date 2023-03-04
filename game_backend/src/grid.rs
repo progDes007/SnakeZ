@@ -1,3 +1,4 @@
+use crate::base::PlayerIndex;
 
 /// Snake body part enum
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -14,23 +15,23 @@ pub enum SnakeBodyPart {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SnakeRec
 {
-    pub player_index: i32,
-    pub part: SnakeBodyPart,
+    pub player_index: PlayerIndex,
+    pub body_part: SnakeBodyPart,
 }
 
-/// Food rec structure
+/// Pizza rec structure
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FoodRec
+pub struct PizzaRec
 {
 }
 
 /// Cell enum represents the contents of a cell in the map.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Cell {
+pub enum GridCell {
     Empty,
     Snake(SnakeRec),
-    Food(FoodRec),
+    Pizza(PizzaRec),
 }
 
 /// Grid type
-type Grid = ndarray::Array2<Cell>;
+pub type Grid = ndarray::Array2<GridCell>;
