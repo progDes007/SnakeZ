@@ -8,6 +8,15 @@ pub struct Vector2i {
     pub y: i32,
 }
 
+/// Enum describing direction
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum Direction {
+    PlusX,
+    MinusX,
+    PlusY,
+    MinusY,
+}
+
 impl Vector2i
 {
     /// Make unit X vector
@@ -29,6 +38,15 @@ impl Vector2i
     /// Make vector from array of 2
     pub fn from_array(array: [i32; 2]) -> Vector2i {
         Vector2i { x: array[0], y: array[1] }
+    }
+    /// Make vector from direction
+    pub fn from_direction(direction: Direction) -> Vector2i {
+        match direction {
+            Direction::PlusX => Vector2i::unit_x(),
+            Direction::MinusX => -Vector2i::unit_x(),
+            Direction::PlusY => Vector2i::unit_y(),
+            Direction::MinusY => -Vector2i::unit_y(),
+        }
     }
 }
 

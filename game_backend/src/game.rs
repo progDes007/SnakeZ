@@ -1,34 +1,20 @@
 use crate::snake::Snake;
-use crate::base::{Vector2i, PlayerIndex};
+use crate::base::{Vector2i, PlayerIndex, Direction};
 use crate::grid::{Grid, GridCell, PizzaRec, SnakeRec, SnakeBodyPart};
-use std::boxed::Box;
+//use std::boxed::Box;
+use std::sync::mpsc;
 use rand;
 
 const INITIAL_LENGTH : u32 = 2;
 
-/// The object that communicates snake control input
-pub struct SnakeControl
-{
-
-}
+type UserControlRx = mpsc::Receiver<Direction>;
 
 /// The object that stores data associated with single player in the game
 struct Player
 {
     snake : Snake,
     score : u32,
-    control : Option<Box<SnakeControl>>,
-}
-
-impl Player{
-    pub fn new() -> Player {
-        Player {
-            snake : Snake::new(Vector2i::new(0, 0), 
-             Vector2i::new(1, 0), INITIAL_LENGTH),
-            score : 0,
-            control : None,
-        }
-    }
+    control : Option<UserControlRx>,
 }
 
 /// Game object. Create and configure it to start a game.
@@ -36,6 +22,19 @@ pub struct Game {
     players : Vec<Player>,
     field_size : Vector2i,
     pizzas : Vec<Vector2i>,
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+impl Player{
+    pub fn new() -> Player {
+        Player {
+            snake : Snake::new(Vector2i::new(0, 0), 
+             Direction::PlusX, INITIAL_LENGTH),
+            score : 0,
+            control : None,
+        }
+    }
 }
 
 impl Game {
@@ -47,17 +46,30 @@ impl Game {
             pizzas : Vec::new(),
         }
     }
-    /// Adds new player that has control. Returns new player index that can
+    /// Adds new player. Returns new player index that can
     /// be used for referencing this player
-    pub fn register_controlled_player(&mut self, control : Box<SnakeControl>) -> PlayerIndex {
+    pub fn register_player(&mut self, control : Option<UserControlRx>) -> PlayerIndex {
         let new_player_index = self.players.len();
         // make spawn point
         let spawn_pos = Game::calc_spawn_pos(new_player_index, INITIAL_LENGTH, self.field_size);
         let mut player = Player::new();
-        player.control = Some(control);
+        player.control = control;
         self.players.push(player);
         new_player_index
     }
+
+    /// Starts the game loop. This function will return only when game is over.
+    /// Or shutdown command was received.
+    pub fn game_loop(&mut self, shutdown_rx : mpsc::Receiver<()>) {
+        
+        loop {
+            //Check shutdown
+            if let Ok(_) = shutdown_rx.try_recv() {
+                break;
+            }
+        }
+    }
+
     /// REturns number of empty cells in the field.
     fn num_empty_cells(&self) -> i32 {
         let mut num = (self.field_size.x * self.field_size.y) as i32;
@@ -168,9 +180,9 @@ mod tests {
     #[test]
     fn test_register_controlled_player() {
         let mut game = Game::new( Vector2i::new(10, 10));
-        let player1 = game.register_controlled_player(Box::new(SnakeControl{}));
-        let player2 = game.register_controlled_player(Box::new(SnakeControl{}));
-        let player3 = game.register_controlled_player(Box::new(SnakeControl{}));
+        let player1 = game.register_player(None);
+        let player2 = game.register_player(None);
+        let player3 = game.register_player(None);
         assert_eq!(player1, 0);
         assert_eq!(player2, 1);
         assert_eq!(player3, 2);
@@ -208,9 +220,9 @@ mod tests {
     fn test_num_empty_cells() {
         let mut game = Game::new( Vector2i::new(10, 10));
         assert_eq!(game.num_empty_cells(), 100);
-        game.register_controlled_player(Box::new(SnakeControl{}));
+        game.register_player(None);
         assert_eq!(game.num_empty_cells(), 100 - INITIAL_LENGTH as i32);
-        game.register_controlled_player(Box::new(SnakeControl{}));
+        game.register_player(None);
         assert_eq!(game.num_empty_cells(), 100 - 2 * INITIAL_LENGTH as i32);
         
         // Add some food
@@ -224,7 +236,7 @@ mod tests {
     #[test]
     fn test_generate_grid() {
         let mut game = Game::new( Vector2i::new(3, 3));
-        let player1 = game.register_controlled_player(Box::new(SnakeControl{}));
+        let player1 = game.register_player(None);
         // Manually set the snake points to make it easier to test
         game.players[player1].snake.set_body(vec![
             Vector2i::new(0, 0),
@@ -245,6 +257,36 @@ mod tests {
         assert_eq!(grid[[2, 0]], GridCell::Empty);
         assert_eq!(grid[[2, 1]], GridCell::Empty);
         assert_eq!(grid[[2, 2]], GridCell::Pizza(PizzaRec{}));
+    }
+
+    // Test game_loop shutdown
+    #[test]
+    fn test_game_loop_shutdown() {
+        // Create mpsc channel
+        let (tx, rx) = mpsc::channel();
+
+        let mut game = Box::new(Game::new( Vector2i::new(10, 10)));
+
+        let handle = std::thread::spawn(move || {
+            // Start game loop
+            game.game_loop(rx);
+        });
+        // Send shutdown immediately;
+        tx.send(()).unwrap();
+
+        // Wait 20 times for 50 ms. Every time checking that thread finished
+        for _ in 0..20 {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            if handle.is_finished() {
+                break;
+            }
+        }
+
+        // Check the thread is done
+        assert!(handle.is_finished());
+
+        // Wait for thread to finish
+        handle.join().unwrap();
     }
 
 }
