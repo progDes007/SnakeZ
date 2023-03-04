@@ -2,6 +2,7 @@ use crate::snake::Snake;
 use crate::base::{Vector2i, PlayerIndex};
 use crate::grid::{Grid, GridCell, PizzaRec, SnakeRec, SnakeBodyPart};
 use std::boxed::Box;
+use rand;
 
 const INITIAL_LENGTH : u32 = 2;
 
@@ -104,7 +105,7 @@ impl Game {
         (pos, dir)
     }
 
-    // Generate the grid that represents the current state of the game
+    /// Generate the grid that represents the current state of the game
     pub fn generate_grid(&self) -> Grid {
         let mut grid = 
             Grid::from_elem(
@@ -136,6 +137,25 @@ impl Game {
 
         // Return
         grid
+    }
+
+    /// Calculate spawn position for the pizza
+    fn calc_spaw_pos_for_pizza(grid : &Grid, estimated_free_cells : usize) -> Vector2i {
+        // Randomly generate the free cell index
+        let mut free_cell_counter = rand::random::<usize>() % estimated_free_cells;   
+        // Loop the grid and find empty cell with the given index
+        for ((x, y), cell) in grid.indexed_iter() {
+            if *cell == GridCell::Empty {
+                if free_cell_counter == 0 {
+                    return Vector2i::new(x as i32, y as i32);
+                }
+                else {
+                     free_cell_counter -= 1; 
+                };
+            }
+        }
+        // Should never happen
+        panic!("Could not find free cell");
     }
 }
 
