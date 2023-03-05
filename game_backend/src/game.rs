@@ -1,7 +1,6 @@
 use crate::snake::Snake;
 use crate::base::{Vector2i, PlayerIndex, Direction};
 use crate::grid::{Grid, GridCell, PizzaRec, SnakeRec, SnakeBodyPart};
-use std::ops::Sub;
 //use std::boxed::Box;
 use std::sync::mpsc;
 use std::time;
@@ -16,7 +15,8 @@ pub type UserControlRx = mpsc::Receiver<Direction>;
 /// The object that stores data associated with single player in the game
 struct Player
 {
-    snake : Snake,
+    /// There is no snake if player is dead
+    snake : Option<Snake>,
     score : u32,
     control : Option<UserControlRx>,
 }
@@ -45,8 +45,8 @@ pub struct Game {
 impl Player{
     pub fn new() -> Player {
         Player {
-            snake : Snake::new(Vector2i::new(0, 0), 
-             Direction::PlusX, INITIAL_LENGTH),
+            snake : Some(Snake::new(Vector2i::new(0, 0), 
+                Direction::PlusX, INITIAL_LENGTH)),
             score : 0,
             control : None,
         }
@@ -57,9 +57,16 @@ impl Player{
         if let Some(control) = &self.control {
             // Read all inputs.
             while let Ok(input) = control.try_recv() {
-                self.snake.try_set_look_direction(input);
+                if self.alive() {
+                    self.snake.as_mut().unwrap().try_set_look_direction(input);
+                }
             }
         }
+    }
+
+    /// Returns if player is alive
+    pub fn alive(&self) -> bool {
+        return self.snake.is_some();
     }
 }
 
@@ -78,24 +85,28 @@ impl Game {
     pub fn register_player(&mut self, control : Option<UserControlRx>) -> PlayerIndex {
         let new_player_index = self.players.len();
         // make spawn point
-        let spawn_pos = Game::calc_spawn_pos(new_player_index, INITIAL_LENGTH, self.field_size);
+        let (spaw_pos, spawn_dir) = Game::calc_spawn_pos(new_player_index, INITIAL_LENGTH, self.field_size);
         let mut player = Player::new();
         player.control = control;
+        player.snake = Some(Snake::new(spaw_pos, spawn_dir, INITIAL_LENGTH));
         self.players.push(player);
         new_player_index
     }
 
     /// Helper function that moves player snake
+    /// #panics
+    /// When player dead
     fn move_player(&mut self, player_index : PlayerIndex) {
-        // Get player
         let player = &mut self.players[player_index];
+        // Get snake. Snake is expected
+        let snake = player.snake.as_mut().unwrap();
         // Move the snake
-        player.snake.move_forward();
+        snake.move_forward();
         // see if there is pizza
-        let head_pos = player.snake.body()[0];
+        let head_pos = snake.body()[0];
         if let Some(pizza_index) = self.pizzas.iter().position(|p| *p == head_pos) {
             // Eat pizza
-            player.snake.eat(1);
+            snake.eat(1);
             player.score += 1;
             // Remove pizza
             self.pizzas.remove(pizza_index);
@@ -106,9 +117,13 @@ impl Game {
     fn step(&mut self) {
         // Predict the step action for every player
         let mut actions = Vec::new();
-        // Predict action for each snake
+        // Predict action for each snake. Dead snakes just hold
         for player_index in 0..self.players.len() {
-            actions.push(self.predict_next_action(player_index));
+            let action = match self.players[player_index].alive() {
+                true => self.predict_next_action(player_index),
+                false => ActionStep::Hold,
+            };
+            actions.push(action);
         }
 
         // Apply the actions
@@ -178,9 +193,11 @@ impl Game {
         let mut num = (self.field_size.x * self.field_size.y) as i32;
         // Substract pizas
         num -= self.pizzas.len() as i32;
-        // Substract length of every snake
+        // Substract length of every snake that is alive
         for player in &self.players {
-            num -= player.snake.body().len() as i32;
+            if player.alive() {
+                num -= player.snake.as_ref().unwrap().body().len() as i32;
+            }
         }
         num
     }
@@ -192,28 +209,28 @@ impl Game {
     /// 
     /// #panics
     /// Panics if the index > 4
-    fn calc_spawn_pos(index : PlayerIndex, length : u32, field_size : Vector2i) -> (Vector2i, Vector2i)
+    fn calc_spawn_pos(index : PlayerIndex, length : u32, field_size : Vector2i) -> (Vector2i, Direction)
     {
         assert!(index < 4);
         let center = Vector2i::new(field_size.x / 2, field_size.y / 2);
         let mut pos = center;
-        let dir: Vector2i;
+        let dir: Direction;
         match index {
             0 => {
                 pos.x -= length as i32;
-                dir = Vector2i::new(-1, 0);
+                dir = Direction::MinusX;
             },
             1 => {
                 pos.y -= length as i32;
-                dir = Vector2i::new(0, -1);
+                dir = Direction::MinusY;
             },
             2 => {
                 pos.x += length as i32;
-                dir = Vector2i::new(1, 0);
+                dir = Direction::PlusX;
             },
             3 => {
                 pos.y += length as i32;
-                dir = Vector2i::new(0, 1);
+                dir = Direction::PlusY;
             },
             _ => panic!("Too many snakes"),
         }
@@ -234,9 +251,13 @@ impl Game {
         // Add snakes
         for (player_i, player) in self.players.iter().enumerate()
         {
+            // Skip dead
+            if !player.alive() { continue; }
+            // Get snake
+            let snake = player.snake.as_ref().unwrap();
             let player_i = player_i as PlayerIndex;
-            let snake_len = player.snake.body().len();
-            for (part_i, body_part) in player.snake.body().iter().enumerate() {
+            let snake_len = snake.body().len();
+            for (part_i, body_part) in snake.body().iter().enumerate() {
 
                 let cell = match part_i {
                     0 => 
@@ -274,11 +295,14 @@ impl Game {
     }
 
     /// Predicts the next action that particular player snake will do in next step.
+    /// #panics
+    /// If player is dead
     fn predict_next_action( &self, player_index : PlayerIndex) -> ActionStep {
         // First estimate the coordinate of potential new head
         let player = &self.players[player_index as usize];
-        let mut new_head = player.snake.body()[0];
-        new_head += Vector2i::from_direction(player.snake.look_direction());
+        let player_snake = player.snake.as_ref().unwrap();
+        let mut new_head = player_snake.body()[0];
+        new_head += Vector2i::from_direction(player_snake.look_direction());
         // Check if the new head is inside the field
         if new_head.x < 0 || new_head.x >= self.field_size.x ||
            new_head.y < 0 || new_head.y >= self.field_size.y {
@@ -287,8 +311,11 @@ impl Game {
 
         // See if new head position is occupied by body OR head of any snake
         for player in &self.players {
+            if !player.alive() { continue; }
+            // Get the snake ref
+            let any_snake = player.snake.as_ref().unwrap();
             // Check all body parts except last (tail)
-            for body_part in &player.snake.body()[..player.snake.body().len() - 1] {
+            for body_part in &any_snake.body()[..any_snake.body().len() - 1] {
                 if *body_part == new_head {
                     return ActionStep::Die;
                 }
@@ -298,12 +325,14 @@ impl Game {
         // If any other snake compete to the same head position, then hold
         // Loop snake with index. Skip current.
         for (other_player_index, other_player) in self.players.iter().enumerate() {
-            if other_player_index == player_index as usize {
+            if other_player_index == player_index as usize || !other_player.alive() {
                 continue;
             }
+            // Get other snake
+            let other_snake = other_player.snake.as_ref().unwrap();
             // Estimate this snake expected head position
-            let mut other_new_head = other_player.snake.body()[0];
-            other_new_head += Vector2i::from_direction(other_player.snake.look_direction());
+            let mut other_new_head = other_snake.body()[0];
+            other_new_head += Vector2i::from_direction(other_snake.look_direction());
             // If this position is the same - hold
             if other_new_head == new_head {
                 return ActionStep::Hold;
@@ -321,7 +350,7 @@ mod tests {
 
     // Test each new player gets new index
     #[test]
-    fn test_register_controlled_player() {
+    fn test_register_player() {
         let mut game = Game::new( Vector2i::new(10, 10));
         let player1 = game.register_player(None);
         let player2 = game.register_player(None);
@@ -329,6 +358,10 @@ mod tests {
         assert_eq!(player1, 0);
         assert_eq!(player2, 1);
         assert_eq!(player3, 2);
+        // Test that snake is created
+        assert!(game.players[player1].snake.is_some());
+        assert!(game.players[player2].snake.is_some());
+        assert!(game.players[player3].snake.is_some());
     }
 
     // Test calc_spawn_pos
@@ -337,19 +370,19 @@ mod tests {
         let field_size = Vector2i::new(10, 10);
         let (pos, dir) = Game::calc_spawn_pos(0, 3, field_size);
         assert_eq!(pos, Vector2i::new(2, 5));
-        assert_eq!(dir, Vector2i::new(-1, 0));
+        assert_eq!(dir, Direction::MinusX);
 
         let (pos, dir) = Game::calc_spawn_pos(1, 3, field_size);
         assert_eq!(pos, Vector2i::new(5, 2));
-        assert_eq!(dir, Vector2i::new(0, -1));
+        assert_eq!(dir, Direction::MinusY);
 
         let (pos, dir) = Game::calc_spawn_pos(2, 3, field_size);
         assert_eq!(pos, Vector2i::new(8, 5));
-        assert_eq!(dir, Vector2i::new(1, 0));
+        assert_eq!(dir, Direction::PlusX);
 
         let (pos, dir) = Game::calc_spawn_pos(3, 3, field_size);
         assert_eq!(pos, Vector2i::new(5, 8));
-        assert_eq!(dir, Vector2i::new(0, 1));
+        assert_eq!(dir, Direction::PlusY);
     }
     // Calling test_cal_spawn_pos with index > 4 should panic
     #[test]
@@ -367,6 +400,10 @@ mod tests {
         assert_eq!(game.num_empty_cells(), 100 - INITIAL_LENGTH as i32);
         game.register_player(None);
         assert_eq!(game.num_empty_cells(), 100 - 2 * INITIAL_LENGTH as i32);
+        // Register dead player
+        game.register_player(None);
+        game.players[2].snake = None;
+        assert_eq!(game.num_empty_cells(), 100 - 2 * INITIAL_LENGTH as i32);
         
         // Add some food
         game.pizzas.push(Vector2i::new(0, 0));
@@ -381,11 +418,17 @@ mod tests {
         let mut game = Game::new( Vector2i::new(3, 3));
         let player1 = game.register_player(None);
         // Manually set the snake points to make it easier to test
-        game.players[player1].snake.set_body(vec![
+        game.players[player1].snake.as_mut().unwrap().set_body(vec![
             Vector2i::new(0, 0),
             Vector2i::new(0, 1),
             Vector2i::new(0, 2),
         ]);
+        // Create another dead player, which should have 0 effect on grid
+        {
+            let player2 = game.register_player(None);
+            game.players[player2].snake = None;
+        }
+
         // Add one pizza
         game.pizzas.push(Vector2i::new(2, 2));
         // Generate grid
@@ -438,84 +481,100 @@ mod tests {
         // Create small 4x4 game
         let mut game = Game::new( Vector2i::new(4, 4));
         let player_index0 = game.register_player(None);
+        
         // Single snake going out of bounds dies
         {
-            game.players[player_index0].snake.set_body(vec![
+            let snake0 = game.players[player_index0].snake.as_mut().unwrap();
+            snake0.set_body(vec![
                 Vector2i::new(0, 3),
                 Vector2i::new(0, 2),
             ]);
-            assert!( game.players[player_index0].snake.try_set_look_direction( Direction::PlusY ));
-            assert_eq!(game.predict_next_action(0), ActionStep::Die);
+            assert!( snake0.try_set_look_direction( Direction::PlusY ));
+            assert_eq!(game.predict_next_action(player_index0), ActionStep::Die);
         }
-        // Single snake going to current tale pos: moves. This is because during the move
+        // Single snake going to current tail pos: moves. This is because during the move
         // this cell will be freed
         {
-            game.players[player_index0].snake.set_body(vec![
+            let snake0 = game.players[player_index0].snake.as_mut().unwrap();
+            snake0.set_body(vec![
                 Vector2i::new(1, 2),
                 Vector2i::new(2, 2),
                 Vector2i::new(2, 1), 
                 Vector2i::new(1, 1),   
             ]);     
-            assert!( game.players[player_index0].snake.try_set_look_direction( Direction::MinusY ));
-            assert_eq!(game.predict_next_action(0), ActionStep::Move);
+            assert!( snake0.try_set_look_direction( Direction::MinusY ));
+            assert_eq!(game.predict_next_action(player_index0), ActionStep::Move);
         }
         // The snake that attempts to move to it's own body pos - dies
         {
-            game.players[player_index0].snake.set_body(vec![
+            let snake0 = game.players[player_index0].snake.as_mut().unwrap();
+            snake0.set_body(vec![
                 Vector2i::new(1, 2),
                 Vector2i::new(2, 2),
                 Vector2i::new(2, 1), 
                 Vector2i::new(1, 1),   
                 Vector2i::new(0, 1), 
             ]);     
-            assert!( game.players[player_index0].snake.try_set_look_direction( Direction::MinusY ));
-            assert_eq!(game.predict_next_action(0), ActionStep::Die);
+            assert!( snake0.try_set_look_direction( Direction::MinusY ));
+            assert_eq!(game.predict_next_action(player_index0), ActionStep::Die);
         }
         // Add one more small snake for further tests
         let player_index1 = game.register_player(None);
-        game.players[player_index1].snake.set_body(vec![
-            Vector2i::new(3, 2),
-            Vector2i::new(3, 1),
-            Vector2i::new(3, 0),
-        ]);
-        assert!( game.players[player_index1].snake.try_set_look_direction( Direction::PlusY ));
+        {
+            let snake1 = game.players[player_index1].snake.as_mut().unwrap();
+                snake1.set_body(vec![
+                    Vector2i::new(3, 2),
+                    Vector2i::new(3, 1),
+                    Vector2i::new(3, 0),
+                ]);
+            assert!( snake1.try_set_look_direction( Direction::PlusY ));
+        }
+        // Add dead player. Mainly to make sure it doesn't crash. It should cause no real affects.
+        {
+            let player_index2 = game.register_player(None);
+            game.players[player_index2].snake = None;
+        }
 
         // When snake tries to move to the head position of other snake - it dies
         {
-            game.players[player_index0].snake.set_body(vec![
+            let snake0 = game.players[player_index0].snake.as_mut().unwrap();
+            snake0.set_body(vec![
                 Vector2i::new(2, 2),
                 Vector2i::new(1, 2),
             ]);     
-            assert!( game.players[player_index0].snake.try_set_look_direction( Direction::PlusX ));
-            assert_eq!(game.predict_next_action(0), ActionStep::Die);
+            assert!( snake0.try_set_look_direction( Direction::PlusX ));
+            assert_eq!(game.predict_next_action(player_index0), ActionStep::Die);
         }
         // When snake tries to move to the body position of other snake - it dies
         {
-            game.players[player_index0].snake.set_body(vec![
+            let snake0 = game.players[player_index0].snake.as_mut().unwrap();
+            snake0.set_body(vec![
                 Vector2i::new(2, 3),
                 Vector2i::new(1, 3),
             ]);     
-            assert!( game.players[player_index0].snake.try_set_look_direction( Direction::PlusX ));
-            assert_eq!(game.predict_next_action(0), ActionStep::Hold);
+            assert!( snake0.try_set_look_direction( Direction::PlusX ));
+            assert_eq!(game.predict_next_action(player_index0), ActionStep::Hold);
         }
         // When snake tries to move ot the tail position of other snake - it moves. This is because during the move
         // this position will be freed
         {
-            game.players[player_index0].snake.set_body(vec![
+            let snake0 = game.players[player_index0].snake.as_mut().unwrap();
+            snake0.set_body(vec![
                 Vector2i::new(2, 0),
                 Vector2i::new(1, 0),
             ]);     
-            assert!( game.players[player_index0].snake.try_set_look_direction( Direction::PlusX ));
-            assert_eq!(game.predict_next_action(0), ActionStep::Move);
+            assert!( snake0.try_set_look_direction( Direction::PlusX ));
+            assert_eq!(game.predict_next_action(player_index0), ActionStep::Move);
         }
         // When snake competes with other snake for same position - it holds
         {
-            game.players[player_index0].snake.set_body(vec![
+            let snake0 = game.players[player_index0].snake.as_mut().unwrap();
+            snake0.set_body(vec![
                 Vector2i::new(2, 0),
                 Vector2i::new(1, 0),
             ]);     
-            assert!( game.players[player_index0].snake.try_set_look_direction( Direction::PlusX ));
-            assert_eq!(game.predict_next_action(0), ActionStep::Move);
+            assert!( snake0.try_set_look_direction( Direction::PlusX ));
+            assert_eq!(game.predict_next_action(player_index0), ActionStep::Move);
         }
 
     }
@@ -526,12 +585,16 @@ mod tests {
         // Create small 4x4 game
         let mut game = Game::new( Vector2i::new(4, 4));
         let player_index0 = game.register_player(None);
-        // Setup snake such that it can move forward 2 times
-        game.players[player_index0].snake.set_body(vec![
-            Vector2i::new(0, 1), 
-            Vector2i::new(0, 0),   
-        ]);
-        assert!( game.players[player_index0].snake.try_set_look_direction( Direction::PlusY ));
+        {
+            let snake = game.players[player_index0].snake.as_mut().unwrap();
+            // Setup snake such that it can move forward 2 times
+            snake.set_body(vec![
+                Vector2i::new(0, 1), 
+                Vector2i::new(0, 0),   
+            ]);
+            assert!( snake.try_set_look_direction( Direction::PlusY ));
+        }
+ 
         // Also add one pizza
         game.pizzas.push(Vector2i::new(0, 3));
         // First move
@@ -545,7 +608,7 @@ mod tests {
         assert_eq!(game.pizzas.len(), 0);
         assert_eq!(game.players[player_index0].score, 1);
         // Also check final snake position
-        assert_eq!(*game.players[player_index0].snake.body(), vec![
+        assert_eq!(*game.players[player_index0].snake.as_ref().unwrap().body(), vec![
             Vector2i::new(0, 3), 
             Vector2i::new(0, 2)
         ]);

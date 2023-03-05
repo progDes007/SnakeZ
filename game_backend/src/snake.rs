@@ -6,6 +6,7 @@ use crate::base::Direction;
 /// body: The body of the snake. First element represents head.
 /// grow_counter: The number of steps the snake can make with growth.
 /// When snake does a "grow" step - the head moves, but tail doesn't. 
+#[derive(Debug, Clone)]
 pub struct Snake {
     look_direction: Direction,
     body: Vec<Vector2i>,
