@@ -57,9 +57,10 @@ impl Snake
     /// length: The length of the snake.
     /// 
     /// #panics
-    /// Panics if the length is 0.
+    /// Panics if the length is < 2.
     pub fn new(position: Vector2i, direction: Direction, length: u32) -> Snake {
-        assert!(length > 0);
+        // There is a logic in system that relies on head and tail to be different cells
+        assert!(length >= 2, "Snake length must be >= 2");
         let dir_vec = Vector2i::from_direction(direction);
         let mut body = Vec::new();
         for i in 0..length {

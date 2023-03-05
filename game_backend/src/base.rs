@@ -72,6 +72,24 @@ impl std::ops::Sub for Vector2i {
     }
 }
 
+impl std::ops::AddAssign for Vector2i {
+    fn add_assign(&mut self, other: Vector2i) {
+        *self = Vector2i {
+            x: self.x + other.x,
+            y: self.y + other.y,
+        };
+    }
+}
+
+impl std::ops::SubAssign for Vector2i {
+    fn sub_assign(&mut self, other: Vector2i) {
+        *self = Vector2i {
+            x: self.x - other.x,
+            y: self.y - other.y,
+        };
+    }
+}
+
 impl std::ops::Neg for Vector2i {
     type Output = Vector2i;
 
