@@ -1,4 +1,5 @@
 use crate::snake::Snake;
+use crate::events;
 use crate::base::{Vector2i, PlayerIndex, Direction};
 use crate::grid::{Grid, GridCell, PizzaRec, SnakeRec, SnakeBodyPart};
 use crate::player::{Player, UserControlRx};
@@ -9,6 +10,8 @@ use rand;
 const INITIAL_LENGTH : u32 = 2;
 const UPDATE_INTERVAL : time::Duration = time::Duration::from_millis(500);
 
+/// The type for the globabl update channel
+pub type GlobalUpdateTx = mpsc::Sender<events::GlobalEvent>;
 
 /// Enum that describes one of the things that may happen with a snake during update step
 #[derive (Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,6 +31,8 @@ pub struct Game {
     field_size : Vector2i,
     pizzas : Vec<Vector2i>,
     grid : Grid,
+
+    global_event_channels : Vec<GlobalUpdateTx>,
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -39,7 +44,8 @@ impl Game {
             players : Vec::new(),
             field_size,
             pizzas : Vec::new(),
-            grid : Grid::from_elem((0,0), GridCell::Empty)
+            grid : Grid::from_elem((0,0), GridCell::Empty),
+            global_event_channels : Vec::new(),
         }
     }
     /// Adds new player. Returns new player index that can
@@ -53,6 +59,11 @@ impl Game {
         player.snake = Some(Snake::new(spaw_pos, spawn_dir, INITIAL_LENGTH));
         self.players.push(player);
         new_player_index
+    }
+
+    /// Register global event channel
+    pub fn register_global_event_channel(&mut self, channel : GlobalUpdateTx) {
+        self.global_event_channels.push(channel);
     }
 
     /// Helper function that moves player snake
@@ -122,6 +133,7 @@ impl Game {
             let game_over = !(self.players.iter().any(|p| p.alive()));
             if game_over
             {
+                self.send_game_over_event();
                 break;
             }
             //Check shutdown
@@ -306,6 +318,27 @@ impl Game {
         }
         // In all other cases snake can move
         ActionStep::Move
+    }
+
+    /// Sends the game over event to all channels
+    fn send_game_over_event(&self) {
+        // Collect summary for every player
+        // Same as below. But more fancy
+        let players_summary : Vec<events::PlayerSummary> = 
+            self.players.iter().map(|player| player.summary()).collect();
+
+        // Create game over event
+        let game_over_event = events::GameOver{
+            players_summary,
+        };
+        // Send event to all channels.
+        for channel in &self.global_event_channels {
+            match channel.send(events::GlobalEvent::GameOver(game_over_event.clone())) {
+                Ok(_) => {},
+                Err(_) => {// Don't care about dead channels
+                }
+            };
+        }
     }
 }
 
@@ -581,5 +614,48 @@ mod tests {
             Vector2i::new(0, 2)
         ]);
 
+    }
+
+    // Test sending game over event
+    #[test]
+    fn test_game_over() {
+        // Create small 4x4 game
+        let mut game = Game::new( Vector2i::new(4, 4));
+        let player_index0 = game.register_player(None);
+        {
+            let snake = game.players[player_index0].snake.as_mut().unwrap();
+            // Setup snake such that it can move forward 2 times
+            snake.set_body(vec![
+                Vector2i::new(0, 1), 
+                Vector2i::new(0, 0),   
+            ]);
+            game.players[player_index0].score = 10;
+        }
+        // Create another dead player
+        let player_index1 = game.register_player(None);
+        game.players[player_index1].kill();
+ 
+        // Create a channel for global event
+        let channel = mpsc::channel::<events::GlobalEvent>();
+        game.register_global_event_channel(channel.0);
+        // Trigger event
+        game.send_game_over_event();
+        // Receive event
+        let event = channel.1.recv().unwrap();
+        // Make sure it's a GameOver event
+        match event {
+            events::GlobalEvent::GameOver(data) => {
+                // Assert there are 2 players
+                assert_eq!(data.players_summary.len(), 2);
+                // First is alive and has score
+                assert_eq!(data.players_summary[0].alive, true);
+                assert_eq!(data.players_summary[0].score, 10);
+                // Second is dead
+                assert_eq!(data.players_summary[1].alive, false);
+                assert_eq!(data.players_summary[1].score, 0);
+                
+            }
+            _ => assert!(false)
+        };
     }
 }

@@ -1,5 +1,6 @@
 use crate::base::{Direction, Vector2i};
 use crate::snake::Snake;
+use crate::events;
 use std::sync::mpsc;
 
 
@@ -45,5 +46,13 @@ impl Player{
     /// Kills the player
     pub fn kill(&mut self) {
         self.snake = None;
+    }
+
+    /// Generates event summary
+    pub fn summary(&self) -> events::PlayerSummary {
+        events::PlayerSummary {
+            score : self.score,
+            alive : self.alive(),
+        }
     }
 }
