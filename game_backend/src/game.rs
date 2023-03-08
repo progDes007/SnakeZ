@@ -1,7 +1,7 @@
 use crate::snake::Snake;
 use crate::base::{Vector2i, PlayerIndex, Direction};
 use crate::grid::{Grid, GridCell, PizzaRec, SnakeRec, SnakeBodyPart};
-//use std::boxed::Box;
+use crate::player::{Player, UserControlRx};
 use std::sync::mpsc;
 use std::time;
 use rand;
@@ -10,16 +10,6 @@ const INITIAL_LENGTH : u32 = 2;
 const UPDATE_INTERVAL : time::Duration = time::Duration::from_millis(500);
 
 
-pub type UserControlRx = mpsc::Receiver<Direction>;
-
-/// The object that stores data associated with single player in the game
-struct Player
-{
-    /// There is no snake if player is dead
-    snake : Option<Snake>,
-    score : u32,
-    control : Option<UserControlRx>,
-}
 /// Enum that describes one of the things that may happen with a snake during update step
 #[derive (Debug, Clone, Copy, PartialEq, Eq)]
 enum ActionStep
@@ -41,39 +31,6 @@ pub struct Game {
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-impl Player{
-    pub fn new() -> Player {
-        Player {
-            snake : Some(Snake::new(Vector2i::new(0, 0), 
-                Direction::PlusX, INITIAL_LENGTH)),
-            score : 0,
-            control : None,
-        }
-    }
-
-    // Read inputs for players
-    fn read_inputs(&mut self) {
-        if let Some(control) = &self.control {
-            // Read all inputs.
-            while let Ok(input) = control.try_recv() {
-                if self.alive() {
-                    self.snake.as_mut().unwrap().try_set_look_direction(input);
-                }
-            }
-        }
-    }
-
-    /// Returns if player is alive
-    pub fn alive(&self) -> bool {
-        return self.snake.is_some();
-    }
-
-    /// Kills the player
-    pub fn kill(&mut self) {
-        self.snake = None;
-    }
-}
 
 impl Game {
     /// Creates new unitialized game object
