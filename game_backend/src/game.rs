@@ -68,6 +68,11 @@ impl Player{
     pub fn alive(&self) -> bool {
         return self.snake.is_some();
     }
+
+    /// Kills the player
+    pub fn kill(&mut self) {
+        self.snake = None;
+    }
 }
 
 impl Game {
@@ -119,10 +124,7 @@ impl Game {
         let mut actions = Vec::new();
         // Predict action for each snake. Dead snakes just hold
         for player_index in 0..self.players.len() {
-            let action = match self.players[player_index].alive() {
-                true => self.predict_next_action(player_index),
-                false => ActionStep::Hold,
-            };
+            let action= self.predict_next_action(player_index);
             actions.push(action);
         }
 
@@ -139,8 +141,7 @@ impl Game {
                 },
                 ActionStep::Die => {
                     // Kill the snake
-                    //self.players[player_index].snake.kill();
-                    // TODO: kill
+                    self.players[player_index].kill();
                 },
             }
         }
@@ -160,6 +161,12 @@ impl Game {
 
         // Start actual loop
         loop {
+            // The game is over when all players are dead
+            let game_over = !(self.players.iter().any(|p| p.alive()));
+            if game_over
+            {
+                break;
+            }
             //Check shutdown
             if let Ok(_) = shutdown_rx.try_recv() {
                 break;
@@ -182,8 +189,6 @@ impl Game {
 
                 // Update grid
                 self.grid = self.generate_grid();
-
-                // Send out the messages
             }
         }
     }
@@ -298,6 +303,10 @@ impl Game {
     /// #panics
     /// If player is dead
     fn predict_next_action( &self, player_index : PlayerIndex) -> ActionStep {
+        // Dead players alwats hold
+        if !self.players[player_index as usize].alive() {
+            return ActionStep::Hold;
+        }
         // First estimate the coordinate of potential new head
         let player = &self.players[player_index as usize];
         let player_snake = player.snake.as_ref().unwrap();
@@ -533,6 +542,8 @@ mod tests {
         {
             let player_index2 = game.register_player(None);
             game.players[player_index2].snake = None;
+            // Dead player always hold
+            assert_eq!(game.predict_next_action(player_index2), ActionStep::Hold);
         }
 
         // When snake tries to move to the head position of other snake - it dies
