@@ -167,6 +167,10 @@ impl Game {
 
                 // Update grid
                 self.grid = self.generate_grid();
+                
+                // Send update event
+                self.send_update_event();
+
             }
         }
     }
@@ -331,20 +335,35 @@ impl Game {
         ActionStep::Move
     }
 
+    /// Small utils function that returns summary for all players
+    fn get_players_summary(&self) -> Vec<events::PlayerSummary> {
+        self.players.iter().map(|player| player.summary()).collect()
+    }
     /// Sends the game over event to all channels
     fn send_game_over_event(&self) {
-        // Collect summary for every player
-        // Same as below. But more fancy
-        let players_summary : Vec<events::PlayerSummary> = 
-            self.players.iter().map(|player| player.summary()).collect();
-
         // Create game over event
         let game_over_event = events::GameOver{
-            players_summary,
+            players_summary : self.get_players_summary()
         };
         // Send event to all channels.
         for channel in &self.global_event_channels {
             match channel.send(events::GlobalEvent::GameOver(game_over_event.clone())) {
+                Ok(_) => {},
+                Err(_) => {// Don't care about dead channels
+                }
+            };
+        }
+    }
+    /// Sends update event to all channels
+    fn send_update_event(&self) {
+        // Create update event
+        let update_event = events::Update{
+            grid : self.grid.clone(),
+            players_summary : self.get_players_summary(),
+        };
+        // Send event to all channels.
+        for channel in &self.global_event_channels {
+            match channel.send(events::GlobalEvent::Update(update_event.clone())) {
                 Ok(_) => {},
                 Err(_) => {// Don't care about dead channels
                 }
@@ -629,19 +648,12 @@ mod tests {
 
     // Test sending game over event
     #[test]
-    fn test_game_over() {
+    fn test_game_over_event() {
         // Create small 4x4 game
         let mut game = Game::new( Vector2i::new(4, 4));
         let player_index0 = game.register_player(None);
-        {
-            let snake = game.players[player_index0].snake.as_mut().unwrap();
-            // Setup snake such that it can move forward 2 times
-            snake.set_body(vec![
-                Vector2i::new(0, 1), 
-                Vector2i::new(0, 0),   
-            ]);
-            game.players[player_index0].score = 10;
-        }
+        game.players[player_index0].score = 10;
+        
         // Create another dead player
         let player_index1 = game.register_player(None);
         game.players[player_index1].kill();
@@ -665,6 +677,34 @@ mod tests {
                 assert_eq!(data.players_summary[1].alive, false);
                 assert_eq!(data.players_summary[1].score, 0);
                 
+            }
+            _ => assert!(false)
+        };
+    }
+
+    // Test the update event
+    #[test]
+    fn test_update_event() {
+        // Create small 4x4 game
+        let mut game = Game::new( Vector2i::new(4, 4));
+        let _player_index0 = game.register_player(None);
+
+        // Create a channel for global event
+        let channel = mpsc::channel::<events::GlobalEvent>();
+        game.register_global_event_channel(channel.0);
+        // Make sure grid is up to date
+        game.grid = game.generate_grid();
+        // Trigger event
+        game.send_update_event();
+        // Receive event
+        let event = channel.1.recv().unwrap();
+        // Make sure it's a GameOver event
+        match event {
+            events::GlobalEvent::Update(data) => {
+                // Assert there is 1 player
+                assert_eq!(data.players_summary.len(), 1);
+                // Assert there is grid of correct size
+                assert_eq!(data.grid.dim(), (4, 4));
             }
             _ => assert!(false)
         };
