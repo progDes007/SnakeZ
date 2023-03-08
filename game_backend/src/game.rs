@@ -113,6 +113,15 @@ impl Game {
                 },
             }
         }
+        // Spawn pizza if there is none
+        if self.pizzas.is_empty() {
+            // We need up to date grid
+            self.grid = self.generate_grid();
+            // Calculate spawn position
+            let spawn_pos = Self::calc_spawn_pos_for_pizza(
+                &self.grid, self.num_empty_cells());
+            self.pizzas.push(spawn_pos);
+        }
 
 
     }
@@ -250,9 +259,11 @@ impl Game {
     }
 
     /// Calculate spawn position for the pizza
-    fn calc_spaw_pos_for_pizza(grid : &Grid, estimated_free_cells : usize) -> Vector2i {
+    fn calc_spawn_pos_for_pizza(grid : &Grid, estimated_free_cells : i32) -> Vector2i {
+        // Panic if estimated free cells is < 0
+        assert!(estimated_free_cells >= 0);
         // Randomly generate the free cell index
-        let mut free_cell_counter = rand::random::<usize>() % estimated_free_cells;   
+        let mut free_cell_counter = rand::random::<usize>() % estimated_free_cells as usize;   
         // Loop the grid and find empty cell with the given index
         for ((x, y), cell) in grid.indexed_iter() {
             if *cell == GridCell::Empty {
