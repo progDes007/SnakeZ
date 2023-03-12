@@ -12,6 +12,7 @@ const UPDATE_INTERVAL : time::Duration = time::Duration::from_millis(500);
 
 /// The type for the globabl update channel
 pub type GlobalUpdateTx = mpsc::Sender<events::GlobalEvent>;
+pub type GlobalUpdateRx = mpsc::Receiver<events::GlobalEvent>;
 
 /// Enum that describes one of the things that may happen with a snake during update step
 #[derive (Debug, Clone, Copy, PartialEq, Eq)]

@@ -5,6 +5,7 @@ use std::sync::mpsc;
 
 
 pub type UserControlRx = mpsc::Receiver<Direction>;
+pub type UserControlTx = mpsc::Sender<Direction>;
 
 /// The object that stores data associated with single player in the game
 pub(crate) struct Player

@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 game_backend = { path = "../game_backend" }
+game_cmd_front = { path = "../game_cmd_front" }

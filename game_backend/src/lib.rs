@@ -1,9 +1,9 @@
-mod base;
+pub mod base;
 mod snake;
-mod game;
-mod grid;
-mod player;
-mod events;
+pub mod game;
+pub mod grid;
+pub mod player;
+pub mod events;
 
 pub use base::Vector2i;
 pub use game::Game;
