@@ -7,7 +7,7 @@ use game_cmd_front::front;
 
 fn main() {
 
-    let mut game = game_backend::Game::new( Vector2i::new(10,10 ));
+    let mut game = game_backend::Game::new( Vector2i::new(20,20 ));
     // Create a player control channel
     let (user_control_tx, user_control_rx) = mpsc::channel::<Direction>();
     // Register player

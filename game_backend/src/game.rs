@@ -161,7 +161,7 @@ impl Game {
             if elapsed > UPDATE_INTERVAL {
                 // Substract updated interval from running timer. That way any leftover time
                 // will be counted towards the next update interval.
-                timer = timer.checked_sub(UPDATE_INTERVAL).unwrap_or(time::Instant::now());
+                timer = time::Instant::now().checked_sub(elapsed - UPDATE_INTERVAL).unwrap();
 
                 // Do update step
                 self.step();

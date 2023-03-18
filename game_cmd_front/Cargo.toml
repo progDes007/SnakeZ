@@ -7,4 +7,5 @@ edition = "2021"
 
 [dependencies]
 console_engine = "2.5"
+lazy_static = "1.4"
 game_backend = { path = "../game_backend" }
