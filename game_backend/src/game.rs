@@ -8,7 +8,7 @@ use std::time;
 use rand;
 
 const INITIAL_LENGTH : u32 = 2;
-const UPDATE_INTERVAL : time::Duration = time::Duration::from_millis(500);
+const UPDATE_INTERVAL : time::Duration = time::Duration::from_millis(250);
 
 /// The type for the globabl update channel
 pub type GlobalUpdateTx = mpsc::Sender<events::GlobalEvent>;
